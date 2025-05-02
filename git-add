@@ -1,0 +1,46 @@
+#!/usr/bin/env python3
+
+import sys
+import os
+import re
+from shutil import copyfile
+
+def valid_filename(filename):
+    return re.match(r'^[a-zA-Z0-9][a-zA-Z0-9._-]*$', filename) is not None
+
+def main():
+    if len(sys.argv) < 2:
+        print("usage: git-add <filenames>", file=sys.stderr)
+        sys.exit(1)
+
+    # check if .git directory exists
+    if not os.path.exists('.git'):
+        print("git-add: error: git repository directory .git not found",  file=sys.stderr)
+        sys.exit(1)
+
+    # Check if index directory exists, if not then make directory
+    if not os.path.exists('.git/index'):
+        os.mkdir('.git/index')
+
+    # Check if valid filenames
+    for file in sys.argv[1:]:
+        if not valid_filename(file):
+            print(f"git-add: error: invalid filename '{file}'", file=sys.stderr)
+            sys.exit(1)
+
+    # Check if files exists
+    for file in sys.argv[1:]:
+        if not os.path.isfile(file):
+            # if file doesn't exist, but exists in the index, remove from index
+            index_file = os.path.join('.git', 'index', file)
+            if os.path.exists(index_file):
+                os.remove(index_file)
+                continue
+            else:
+                print(f"git-add: error: can not open '{file}'", file=sys.stderr)
+                sys.exit(1)
+        # Copying the files into index directory
+        copyfile(file, os.path.join('.git/index', file))
+
+if __name__ == "__main__":
+    main()

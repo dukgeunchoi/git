@@ -1,0 +1,54 @@
+#!/usr/bin/env python3
+
+import os
+import sys
+import re
+
+# Show the contents in the specified commit and file
+def show_commit_file(commit_no, filename):
+    commits_dir = os.path.join('.git', 'commits', commit_no)
+    if not os.path.exists(commits_dir):
+        print(f"git-show: error: unknown commit '{commit_no}'")
+        sys.exit(1)
+    
+    file_path = os.path.join(commits_dir, filename)
+    if not os.path.exists(file_path):
+        print(f"git-show: error: '{filename}' not found in commit {commit_no}")
+        sys.exit(1)
+    
+    with open(file_path, 'r') as f:
+        content = f.read()
+        print(f"{content}", end='')
+
+# Show the content in the specified file in the index
+def show_index_file(filename):
+    file_path = os.path.join('.git', 'index', filename)
+    if not os.path.exists(file_path):
+        print(f"git-show: error: '{filename}' not found in index")
+        sys.exit(1)
+    
+    with open(file_path, 'r') as f:
+        content = f.read()
+        print(f"{content}", end='')
+
+def main():
+    if len(sys.argv) != 2:
+        print("usage: git-show [commit]:filename", file=sys.stderr)
+        sys.exit(1)
+    
+    # Check if .git directory already exists
+    git_dir = '.git'
+    if not os.path.exists(git_dir):
+        print("git-show: error: git repository directory .git not found", file=sys.stderr)
+        sys.exit(1)
+
+    commit_no = re.split(r':', sys.argv[1])[0]
+    filename = re.split(r':', sys.argv[1])[1]
+
+    if commit_no != "":
+        show_commit_file(commit_no, filename)
+    else:
+        show_index_file(filename)
+
+if __name__ == "__main__":
+    main()

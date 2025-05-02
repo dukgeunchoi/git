@@ -1,0 +1,22 @@
+#!/usr/bin/env python3
+
+import sys
+import os
+
+def main():
+    # Check if .git directory already exists
+    if os.path.exists('.git'):
+        print("git-init: error: .git already exists", file=sys.stderr)
+        sys.exit(1)
+
+    # Create .git directory
+    os.mkdir('.git')
+    # Make HEAD file
+    HEAD_file = os.path.join('.git', 'HEAD')
+    with open(HEAD_file, 'w') as f:
+        f.write("trunk")
+
+    print("Initialized empty git repository in .git")
+
+if __name__ == "__main__":
+    main()

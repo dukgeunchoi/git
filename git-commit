@@ -1,0 +1,129 @@
+#!/usr/bin/env python3
+
+import os
+import sys
+from shutil import copyfile
+import filecmp
+
+# Adding contents from the current directory for files in index if [-a]
+def add_current_content_to_index(index_dir):
+    for index_file in os.listdir(index_dir):
+        copyfile(index_file, os.path.join(index_dir, index_file))
+
+# Check if there any changes to be commited
+def has_changes_to_commit(index_dir, commits_dir, next_commit):
+    if next_commit == 0:
+        return True
+    
+    last_commit_dir = os.path.join(commits_dir, str(next_commit - 1))
+    for file in os.listdir(index_dir):
+        index_file = os.path.join(index_dir, file)
+        commit_file = os.path.join(last_commit_dir, file)
+        # if a file doesn't exist in commit file, or a file is different
+        if not os.path.exists(commit_file) or not filecmp.cmp(index_file, commit_file, shallow=False):
+            return True
+
+    # file exists in commit but not index
+    for file in os.listdir(last_commit_dir):
+        if file == "log":
+            continue
+        index_file = os.path.join(index_dir, file)
+        if not os.path.exists(index_file):
+            return True
+
+    return False
+
+# Create the commit directory
+def create_commit(index_dir, commits_dir, next_commit, message):
+    commit_dir = os.path.join(commits_dir, str(next_commit))
+    os.mkdir(commit_dir)
+
+    for file in os.listdir(index_dir):
+        copyfile(os.path.join(index_dir, file), os.path.join(commit_dir, file))
+
+    log_file = os.path.join(commit_dir, 'log')
+    with open(log_file, 'w') as f:
+        f.write(f"{next_commit} {message}")
+
+# Updating the current branch's commit number in the branches file
+def update_branch_commit(next_commit):
+    branch_file = os.path.join('.git', 'branches')
+    head_file = os.path.join('.git', 'HEAD')
+
+    # If first commit, create the branch_file as well
+    if next_commit == 0:
+        with open(branch_file, 'w') as f:
+            f.write('trunk 0\n') ## as you when you init, it always starts from trunk, and can't create a new branch before commit
+    else:
+        with open(head_file, 'r') as f:
+            current_branch = f.read().strip()
+        
+        with open(branch_file, 'r') as f:
+            branches = f.readlines()
+        
+        updated_branches = [
+            f"{current_branch} {next_commit}\n" if branch.strip().split()[0] == current_branch else branch
+            for branch in branches
+        ]
+        
+        with open(branch_file, 'w') as f:
+            f.writelines(updated_branches)
+
+def main():
+    # Checking valid arguments
+    if len(sys.argv) > 4 or len(sys.argv) < 3:
+        print("usage: git-commit [-a] -m commit-message", file=sys.stderr)
+        sys.exit(1)
+
+    if len(sys.argv) == 3 and sys.argv[1] != '-m':
+        print("usage: git-commit [-a] -m commit-message", file=sys.stderr)
+        sys.exit(1)
+
+    if len(sys.argv) == 4 and sys.argv[1] != '-a' and sys.argv[2] != '-m':
+        print("usage: git-commit [-a] -m commit-message", file=sys.stderr)
+        sys.exit(1)
+        
+    if len(sys.argv) == 3:
+        message = sys.argv[2]
+        add_current_content = False
+    else:
+        message = sys.argv[3]
+        add_current_content = True
+
+    git_dir = '.git'
+    index_dir = os.path.join(git_dir, 'index')
+    commits_dir = os.path.join(git_dir, 'commits')
+
+    # Check if .git directory exists
+    if not os.path.exists(git_dir):
+        print("git-commit: error: git repository directory .git not found", file=sys.stderr)
+        sys.exit(1)
+
+    # Check if index directory exists
+    if not os.path.exists(index_dir):
+        print("nothing to commit", file=sys.stderr)
+        sys.exit(1)
+
+    # Check if commit directory exists, if not then make directory
+    if not os.path.exists(commits_dir):
+        os.mkdir(commits_dir)
+
+    # Find commit number and check if there is anything to commit
+    next_commit = len(os.listdir(commits_dir))
+
+    if add_current_content:
+        add_current_content_to_index(index_dir)
+
+    if not has_changes_to_commit(index_dir, commits_dir, next_commit):
+        print("nothing to commit", file=sys.stderr)
+        sys.exit(1)
+
+    # Make the commit directory
+    create_commit(index_dir, commits_dir, next_commit, message)
+
+    update_branch_commit(next_commit)
+
+    print(f"Committed as commit {next_commit}")
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,32 @@
+#!/usr/bin/env python3
+
+import os
+import sys
+
+def main():
+    git_dir = '.git'
+    commits_dir = os.path.join(git_dir, 'commits')
+
+    # Check if .git directory already exists
+    if not os.path.exists(git_dir):
+        print("git-log: error: git repository directory .git not found", file=sys.stderr)
+        sys.exit(1)
+
+    # If commit dir doesn't exist, it means no commit logs
+    if not os.path.exists(commits_dir):
+        sys.exit(0)
+
+    # Loop through the commits and read the log files
+    logs = []
+    for commit in os.listdir(commits_dir):
+        log_file = os.path.join(commits_dir, commit, 'log')
+        with open(log_file, 'r') as f:
+            log = f.read()
+            logs.append(log)
+
+    # sort in decreasing order
+    for log in sorted(logs, reverse=True):
+        print(f"{log}")
+
+if __name__ == "__main__":
+    main()

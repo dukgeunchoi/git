@@ -1,0 +1,153 @@
+#!/usr/bin/env python3
+
+import sys
+import os
+from shutil import copyfile
+import filecmp
+
+def update_working_dir(new_commits_dir, current_commit_dir, tracked_files, index_dir):
+    # Update working directory
+    for file in os.listdir():
+        if file not in os.listdir(new_commits_dir) and file != '.git' and file in tracked_files:
+            os.remove(file)
+
+    for file in os.listdir(new_commits_dir):
+        new_commit_file = os.path.join(new_commits_dir, file)
+        curr_commit_file = os.path.join(current_commit_dir, file)
+        index_file = os.path.join(index_dir, file)
+        if file == 'log':
+            continue
+
+        # Check stages
+        if file in tracked_files:
+            # if file changed, different changes staged for commit
+            if not filecmp.cmp(file, index_file, shallow=False) and not filecmp.cmp(index_file, curr_commit_file, shallow=False):
+                continue
+            # if file changed, changes not staged for commit
+            elif not filecmp.cmp(file, index_file, shallow=False) and filecmp.cmp(index_file, curr_commit_file, shallow=False):
+                continue
+            # when file changed, changes staged for commit
+            elif filecmp.cmp(file, index_file, shallow=False) and not filecmp.cmp(file, curr_commit_file, shallow=False):
+                continue
+    
+            # if commited, copy to the curr file to new commit file
+            if filecmp.cmp(file, index_file, shallow=False) and filecmp.cmp(index_file, curr_commit_file, shallow=False):
+                copyfile(new_commit_file, index_file)
+
+        copyfile(new_commit_file, file)
+
+def update_index_dir(index_dir, new_commits_dir):
+    # Remove everything then copy the index file
+    for file in os.listdir(index_dir):
+        commit_file = os.path.join(new_commits_dir, file)
+        index_file = os.path.join(index_dir, file)
+        if os.path.exists(commit_file) and filecmp.cmp(file, index_file, shallow=False) and not filecmp.cmp(file, commit_file, shallow=False):
+            continue
+
+        os.remove(os.path.join(index_dir, file))
+
+    for file in os.listdir(new_commits_dir):
+        commits_file = os.path.join(new_commits_dir, file)
+        index_file = os.path.join(index_dir, file)
+        if file == 'log':
+            continue
+        if os.path.exists(index_file) and filecmp.cmp(file, index_file, shallow=False) and not filecmp.cmp(file, commits_file, shallow=False):
+            continue
+
+        copyfile(commits_file, os.path.join(index_dir, file))
+
+def get_conflicts(new_commits_dir, current_commit_dir, tracked_files):
+    conflicts = []
+    for file in os.listdir(new_commits_dir):
+        if file == 'log':
+            continue
+        new_commit_file = os.path.join(new_commits_dir, file)
+        curr_commit_file = os.path.join(current_commit_dir, file)
+        if os.path.exists(file):
+            if not filecmp.cmp(file, new_commit_file, shallow=False):
+                if file not in tracked_files or (not filecmp.cmp(file, curr_commit_file, shallow=False) and not filecmp.cmp(new_commit_file, curr_commit_file, shallow=False)):
+                    conflicts.append(file)
+    return conflicts
+
+def main():
+    # Checking valid arguments
+    if len(sys.argv) != 2:
+        print("usage: git-checkout <branch>", file=sys.stderr)
+        sys.exit(1)
+
+    branch_name = sys.argv[1]
+
+    git_dir = '.git'
+    index_dir = os.path.join(git_dir, 'index')
+    commits_dir = os.path.join(git_dir, 'commits')
+    branch_file = os.path.join(git_dir, 'branches')
+    head_file = os.path.join('.git', 'HEAD')
+
+    # check if .git directory exists
+    if not os.path.exists('.git'):
+        print("git-checkout: error: git repository directory .git not found",  file=sys.stderr)
+        sys.exit(1)
+
+    # check if commit has been made
+    if not os.path.exists(commits_dir):
+        print("git-checkout: error: this command can not be run until after the first commit", file=sys.stderr)
+        sys.exit(1)
+    
+    with open(head_file, 'r') as f:
+        current_branch = f.read().strip()
+
+    with open(branch_file, 'r') as f:
+        branches = f.readlines()
+
+    # Check if branch exists and get commit numbers of current and new branch
+    branchExists = False
+    current_branch_commit_no = None
+    for existing_branch in branches:
+        existing_branch_name = existing_branch.strip().split()[0]
+        commit_no = existing_branch.strip().split()[1]
+        if existing_branch_name == branch_name:
+            branchExists = True
+            new_branch_commit_no = commit_no
+        elif existing_branch_name == current_branch:
+            current_branch_commit_no = commit_no
+
+    if not branchExists:
+        print(f"git-checkout: error: unknown branch '{branch_name}'", file=sys.stderr)
+        sys.exit(1)
+
+    # Check for tracked files
+    if current_branch_commit_no:
+        current_commit_dir = os.path.join(commits_dir, current_branch_commit_no)
+        tracked_files = [f for f in os.listdir(current_commit_dir) if f != 'log']
+    # If it doesn't find the current branch commit number, it hasnt made another branch yet
+    else:
+        print("Already on 'trunk'", file=sys.stderr)
+        sys.exit(1)
+
+    new_commits_dir = os.path.join(commits_dir, new_branch_commit_no)
+
+    # Check for potential conflicts
+    conflicts = get_conflicts(new_commits_dir, current_commit_dir, tracked_files)
+
+    if conflicts:
+        print("git-checkout: error: Your changes to the following files would be overwritten by checkout:", file=sys.stderr)
+        for file in conflicts:
+            print(file, file=sys.stderr)
+        sys.exit(1)
+
+    # Check if already on branch
+    if current_branch == branch_name:
+        print(f"Already on '{branch_name}'")
+        sys.exit(0)
+
+    # Update HEAD file
+    with open(head_file, 'w') as f:
+        f.write(f'{branch_name}')
+
+    update_working_dir(new_commits_dir, current_commit_dir, tracked_files, index_dir)
+    update_index_dir(index_dir, new_commits_dir)
+
+    print(f"Switched to branch '{branch_name}'")
+
+if __name__ == "__main__":
+    main()

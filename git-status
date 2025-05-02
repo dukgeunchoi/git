@@ -1,0 +1,96 @@
+#!/usr/bin/env python3
+
+import os
+import sys
+import filecmp
+
+# Get the commit directory that the current branch is in
+def get_current_commit_dir(commits_dir):
+    with open(os.path.join('.git', 'HEAD'), 'r') as f:
+        current_branch = f.read().strip()
+
+    if os.path.exists(commits_dir):
+        with open(os.path.join('.git', 'branches'), 'r') as f:
+            for line in f:
+                branch, commit = line.strip().split()
+                if branch == current_branch:
+                    current_commit = commit
+        return os.path.join(commits_dir, str(current_commit))
+    else:
+        return None
+
+# Return file status
+def get_file_status(file, index_dir, last_commit_dir):
+    index_file = os.path.join(index_dir, file) if index_dir else None
+    commit_file = os.path.join(last_commit_dir, file) if last_commit_dir else None
+
+    file_exists = os.path.exists(file)
+    index_exists = os.path.exists(index_file)
+    commit_exists = os.path.exists(commit_file) if commit_file else False
+
+    # if exist in all three
+    if file_exists and index_exists and commit_exists:
+        if not filecmp.cmp(file, index_file, shallow=False) and not filecmp.cmp(index_file, commit_file, shallow=False):
+            return "file changed, different changes staged for commit"
+        elif filecmp.cmp(file, index_file, shallow=False) and not filecmp.cmp(file, commit_file, shallow=False):
+            return "file changed, changes staged for commit"
+        elif not filecmp.cmp(file, index_file, shallow=False) and filecmp.cmp(index_file, commit_file, shallow=False):
+            return "file changed, changes not staged for commit"
+        else:
+            return "same as repo"
+    # if cached (ie. deleted from the index only)
+    elif file_exists and not index_exists and commit_exists:
+        return "deleted from index"
+    # if not committed
+    elif file_exists and index_exists and not commit_exists:
+        if not filecmp.cmp(file, index_file, shallow=False):
+            return "added to index, file changed"
+        else:
+            return "added to index"
+    # if deleted in index as well
+    elif not file_exists and not index_exists:
+        return "file deleted, deleted from index"
+    # if exists in index, but deleted
+    elif not file_exists and index_exists:
+        if not commit_exists:
+            return "added to index, file deleted"
+        else:
+            return "file deleted"
+    elif file_exists and not index_exists and not commit_exists:
+        return "untracked"
+    else:
+        return "same as repo"
+
+def main():
+    # Checking valid arguments
+    if len(sys.argv) != 1:
+        print("usage: git-status", file=sys.stderr)
+        sys.exit(1)
+
+    git_dir = '.git'
+    index_dir = os.path.join(git_dir, 'index')
+    commits_dir = os.path.join(git_dir, 'commits')
+
+    cuurent_commit_dir = get_current_commit_dir(commits_dir)
+
+    # Get all files in current directory, index, and current commit
+    current_files = set(os.listdir('.'))
+    if os.path.exists(index_dir):
+        index_files = set(os.listdir(index_dir))
+    else:
+        index_files = set()
+    if cuurent_commit_dir:
+        commit_files = set(os.listdir(cuurent_commit_dir))
+    else:
+        commit_files = set()
+
+    all_files = sorted(current_files | index_files | commit_files)
+
+    for file in all_files:
+        if file == '.git' or file == 'log' or file.startswith('test'):
+            continue
+        status = get_file_status(file, index_dir, cuurent_commit_dir)
+        print(f"{file} - {status}")
+
+if __name__ == "__main__":
+    main()

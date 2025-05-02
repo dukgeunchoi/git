@@ -1,0 +1,135 @@
+#!/usr/bin/env python3
+
+import sys
+import os
+import re
+
+def valid_branchname(filename):
+    return re.match(r'^[a-zA-Z0-9][a-zA-Z0-9._-]*$', filename) is not None
+
+def get_current_commit():
+    with open(os.path.join('.git', 'HEAD'), 'r') as f:
+        current_branch = f.read().strip()
+
+    with open(os.path.join('.git', 'branches'), 'r') as f:
+        for line in f:
+            branch, commit = line.strip().split()
+            if branch == current_branch:
+                return commit
+    return None
+
+def add_branches(branch_name, branches, branch_file):
+    # check if valid branch name
+    if not valid_branchname(branch_name):
+        print(f"git-branch: error: invalid branch name '{branch_name}'", file=sys.stderr)
+        sys.exit(1)
+    
+    #  Check if branch already exists
+    for existing_branch in branches:
+        existing_branch_name = existing_branch.strip().split()[0]
+        if existing_branch_name == branch_name:
+            print(f"git-branch: error: branch '{branch_name}' already exists", file=sys.stderr)
+            sys.exit(1)
+    
+    current_commit = get_current_commit()
+
+    # Update the branch file - with addition of the branch
+    with open(branch_file, 'a') as f:
+        f.write(f'{branch_name} {current_commit}\n')
+
+def delete_branches(branch_name, branches, branch_file):
+    # check if valid branch name
+    if not valid_branchname(branch_name):
+        print(f"git-branch: error: invalid branch name '{branch_name}'", file=sys.stderr)
+        sys.exit(1)
+
+    # Check if branch exists
+    branchExists = False
+    for existing_branch in branches:
+        existing_branch_name = existing_branch.strip().split()[0]
+        if existing_branch_name == branch_name:
+            branchExists = True
+    
+    if not branchExists:
+        print(f"git-branch: error: branch '{branch_name}' doesn't exist", file=sys.stderr)
+        sys.exit(1)
+    
+    # Check if branch name is trunk
+    if branch_name == 'trunk':
+        print("git-branch: error: can not delete branch 'trunk': default branch", file=sys.stderr)
+        sys.exit(1)
+
+    # Check if it is the current branch
+    with open(os.path.join('.git', 'HEAD'), 'r') as f:
+        current_branch = f.read().strip()
+    if branch_name == current_branch:
+        print(f"git-branch: error: can not delete branch '{branch_name}': current branch", file=sys.stderr)
+        sys.exit(1)
+
+    # Update the branch file - with deletion of the branch    
+    updated_branches = []
+    for existing_branch in branches:
+        if existing_branch.strip().split()[0] != branch_name:
+            updated_branches.append(existing_branch)
+        
+    with open(branch_file, 'w') as f:
+        f.writelines(updated_branches)
+    
+    print(f"Deleted branch '{branch_name}'")
+
+def list_branches(branches):
+    for existing_branch in sorted(branches):
+        existing_branch_name = existing_branch.strip().split()[0]
+        print(f"{existing_branch_name}")
+
+def main():
+    # Checking valid arguments
+    if len(sys.argv) > 3:
+        print("usage: git-branch [-d] <branch>", file=sys.stderr)
+        sys.exit(1)
+
+    if len(sys.argv) == 2:
+        if sys.argv[1] == '-d':
+            print("git-branch: error: branch name required", file=sys.stderr)
+            sys.exit(1)
+
+    to_add = False
+    to_delete = False
+    to_list = False
+
+    # Determine whether to add, delete or list
+    if len(sys.argv) == 1:
+        to_list = True
+    elif len(sys.argv) == 2:
+        to_add = True
+        branch_name = sys.argv[1]
+    else:
+        to_delete = True
+        branch_name = sys.argv[2]
+
+    git_dir = '.git'
+    commits_dir = os.path.join(git_dir, 'commits')
+    branch_file = os.path.join(git_dir, 'branches')
+
+    # check if .git directory exists
+    if not os.path.exists('.git'):
+        print("git-branch: error: git repository directory .git not found",  file=sys.stderr)
+        sys.exit(1)
+
+    # check if commit has been made
+    if not os.path.exists(commits_dir):
+        print("git-branch: error: this command can not be run until after the first commit", file=sys.stderr)
+        sys.exit(1)
+
+    with open(branch_file, 'r') as f:
+        branches = f.readlines()
+
+    if to_add:    
+        add_branches(branch_name, branches, branch_file)
+    elif to_delete:
+        delete_branches(branch_name, branches, branch_file)
+    elif to_list:
+        list_branches(branches)
+
+if __name__ == "__main__":
+    main()
